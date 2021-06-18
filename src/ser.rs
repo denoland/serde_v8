@@ -269,10 +269,66 @@ impl<'a, 'b, 'c> ser::SerializeStruct for MagicBufferSerializer<'a, 'b, 'c> {
   }
 }
 
+pub struct MagicByteStringSerializer<'a, 'b, 'c> {
+  scope: ScopePtr<'a, 'b, 'c>,
+  ptr: Option<std::ptr::NonNull<u8>>,
+  len: Option<usize>,
+}
+
+impl<'a, 'b, 'c> MagicByteStringSerializer<'a, 'b, 'c> {
+  pub fn new(scope: ScopePtr<'a, 'b, 'c>) -> Self {
+    Self {
+      scope,
+      ptr: None,
+      len: None,
+    }
+  }
+}
+
+impl<'a, 'b, 'c> ser::SerializeStruct
+  for MagicByteStringSerializer<'a, 'b, 'c>
+{
+  type Ok = JsValue<'a>;
+  type Error = Error;
+
+  fn serialize_field<T: ?Sized + Serialize>(
+    &mut self,
+    key: &'static str,
+    value: &T,
+  ) -> Result<()> {
+    // Get u64 chunk
+    let transmuted: u64 = value.serialize(magic::FieldSerializer {})?;
+    match key {
+      magic::bytestring::FIELD_PTR => {
+        self.ptr = std::ptr::NonNull::new(transmuted as *mut u8);
+      }
+      magic::bytestring::FIELD_LEN => {
+        self.len = Some(transmuted as usize);
+      }
+      _ => unreachable!(),
+    }
+    Ok(())
+  }
+
+  fn end(self) -> JsResult<'a> {
+    // SAFETY: This function is only called from ByteString::serialize(), which
+    // guarantees the Vec is still alive.
+    let bytes = unsafe {
+      std::slice::from_raw_parts(self.ptr.unwrap().as_ptr(), self.len.unwrap())
+    };
+    let scope = &mut *self.scope.borrow_mut();
+    let v8_value =
+      v8::String::new_from_one_byte(scope, bytes, v8::NewStringType::Normal)
+        .unwrap();
+    Ok(v8_value.into())
+  }
+}
+
 // Dispatches between magic and regular struct serializers
 pub enum StructSerializers<'a, 'b, 'c> {
   Magic(MagicSerializer<'a>),
   MagicBuffer(MagicBufferSerializer<'a, 'b, 'c>),
+  MagicByteString(MagicByteStringSerializer<'a, 'b, 'c>),
   Regular(ObjectSerializer<'a, 'b, 'c>),
 }
 
@@ -288,6 +344,7 @@ impl<'a, 'b, 'c> ser::SerializeStruct for StructSerializers<'a, 'b, 'c> {
     match self {
       StructSerializers::Magic(s) => s.serialize_field(key, value),
       StructSerializers::MagicBuffer(s) => s.serialize_field(key, value),
+      StructSerializers::MagicByteString(s) => s.serialize_field(key, value),
       StructSerializers::Regular(s) => s.serialize_field(key, value),
     }
   }
@@ -296,6 +353,7 @@ impl<'a, 'b, 'c> ser::SerializeStruct for StructSerializers<'a, 'b, 'c> {
     match self {
       StructSerializers::Magic(s) => s.end(),
       StructSerializers::MagicBuffer(s) => s.end(),
+      StructSerializers::MagicByteString(s) => s.end(),
       StructSerializers::Regular(s) => s.end(),
     }
   }
@@ -519,6 +577,10 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
       magic::buffer::BUF_NAME => {
         let m = MagicBufferSerializer::new(self.scope);
         Ok(StructSerializers::MagicBuffer(m))
+      }
+      magic::bytestring::NAME => {
+        let m = MagicByteStringSerializer::new(self.scope);
+        Ok(StructSerializers::MagicByteString(m))
       }
       _ => {
         let o = ObjectSerializer::new(self.scope);

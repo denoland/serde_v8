@@ -122,3 +122,49 @@ fn magic_buffer() {
     assert!(eq.is_true());
   })
 }
+
+#[test]
+fn magic_byte_string() {
+  v8_do(|| {
+    // Init isolate
+    let isolate = &mut v8::Isolate::new(v8::CreateParams::default());
+    let handle_scope = &mut v8::HandleScope::new(isolate);
+    let context = v8::Context::new(handle_scope);
+    let scope = &mut v8::ContextScope::new(handle_scope, context);
+    let global = context.global(scope);
+
+    // JS string to ByteString
+    let v8_string = js_exec(scope, "'test \\0\\t\\n\\r\\x7F\\x80áþÆñ'");
+    let rust_reflex: serde_v8::ByteString =
+      serde_v8::from_v8(scope, v8_string).unwrap();
+    assert_eq!(
+      rust_reflex.as_ref(),
+      b"test \0\t\n\r\x7F\x80\xE1\xFE\xC6\xF1"
+    );
+
+    // Non-Latin-1 characters
+    let v8_string = js_exec(scope, "'日本語'");
+    let rust_reflex: Result<serde_v8::ByteString, serde_v8::Error> =
+      serde_v8::from_v8(scope, v8_string);
+    assert!(rust_reflex.is_err());
+
+    // Windows-1252 characters that aren't Latin-1
+    let v8_string = js_exec(scope, "'œ'");
+    let rust_reflex: Result<serde_v8::ByteString, serde_v8::Error> =
+      serde_v8::from_v8(scope, v8_string);
+    assert!(rust_reflex.is_err());
+
+    // ByteString to JS string
+    let expected = "a\x00sf:~\x7Fá\u{009C}þ\u{008A}";
+    let buf: Vec<u8> = b"a\x00sf:~\x7F\xE1\x9C\xFE\x8A".as_ref().into();
+    let zbuf = serde_v8::ByteString(buf);
+    let v8_value = serde_v8::to_v8(scope, zbuf).unwrap();
+    let key = serde_v8::to_v8(scope, "actual").unwrap();
+    global.set(scope, key, v8_value);
+    let v8_value_expected = serde_v8::to_v8(scope, expected).unwrap();
+    let key_expected = serde_v8::to_v8(scope, "expected").unwrap();
+    global.set(scope, key_expected, v8_value_expected);
+    let eq = js_exec(scope, "actual === expected");
+    assert!(eq.is_true());
+  })
+}
