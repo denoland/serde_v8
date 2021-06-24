@@ -21,7 +21,7 @@ impl ByteString {
   }
 
   pub fn capacity(&self) -> usize {
-    return self.0.capacity();
+    self.0.capacity()
   }
 
   pub fn reserve(&mut self, additional: usize) {
@@ -46,6 +46,12 @@ impl ByteString {
 
   pub fn pop(&mut self) -> Option<u8> {
     self.0.pop()
+  }
+}
+
+impl Default for ByteString {
+  fn default() -> Self {
+    ByteString::new()
   }
 }
 
