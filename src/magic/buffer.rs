@@ -19,7 +19,14 @@ impl MagicBuffer {
     scope: &mut v8::HandleScope<'s>,
     view: v8::Local<v8::ArrayBufferView>,
   ) -> Self {
-    Self::FromV8(ZeroCopyBuf::new(scope, view))
+    Self::try_new(scope, view).unwrap()
+  }
+
+  pub fn try_new<'s>(
+    scope: &mut v8::HandleScope<'s>,
+    view: v8::Local<v8::ArrayBufferView>,
+  ) -> Result<Self, v8::DataError> {
+    Ok(Self::FromV8(ZeroCopyBuf::try_new(scope, view)?))
   }
 
   pub fn empty() -> Self {

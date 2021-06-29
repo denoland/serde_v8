@@ -4,6 +4,7 @@ use rusty_v8 as v8;
 use serde::{Deserialize, Serialize};
 
 use serde_v8::utils::{js_exec, v8_do};
+use serde_v8::Result;
 use std::convert::TryFrom;
 
 #[derive(Deserialize)]
@@ -91,6 +92,12 @@ fn magic_buffer() {
     (&mut *zbuf)[2] = 42;
     let eq = js_exec(scope, "t1[2] === 42");
     assert!(eq.is_true());
+
+    // Shared buffers
+    let v8_array =
+      js_exec(scope, "new Uint8Array(new SharedArrayBuffer([1,2,3,4,5]))");
+    let zbuf: Result<serde_v8::Buffer> = serde_v8::from_v8(scope, v8_array);
+    assert!(zbuf.is_err());
 
     // Serialization
     let buf: Vec<u8> = vec![1, 2, 3, 99, 5];

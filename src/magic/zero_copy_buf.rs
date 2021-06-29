@@ -30,14 +30,27 @@ impl ZeroCopyBuf {
     scope: &mut v8::HandleScope<'s>,
     view: v8::Local<v8::ArrayBufferView>,
   ) -> Self {
+    Self::try_new(scope, view).unwrap()
+  }
+
+  pub fn try_new<'s>(
+    scope: &mut v8::HandleScope<'s>,
+    view: v8::Local<v8::ArrayBufferView>,
+  ) -> Result<Self, v8::DataError> {
     let backing_store = view.buffer(scope).unwrap().get_backing_store();
+    if backing_store.is_shared() {
+      return Err(v8::DataError::BadType {
+        actual: "shared ArrayBufferView",
+        expected: "non-shared ArrayBufferView",
+      });
+    }
     let byte_offset = view.byte_offset();
     let byte_length = view.byte_length();
-    Self {
+    Ok(Self {
       backing_store,
       byte_offset,
       byte_length,
-    }
+    })
   }
 }
 
