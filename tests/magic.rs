@@ -151,13 +151,13 @@ fn magic_byte_string() {
 
     // Non-Latin-1 characters
     let v8_string = js_exec(scope, "'日本語'");
-    let rust_reflex: Result<serde_v8::ByteString, serde_v8::Error> =
+    let rust_reflex: Result<serde_v8::ByteString> =
       serde_v8::from_v8(scope, v8_string);
     assert!(rust_reflex.is_err());
 
     // Windows-1252 characters that aren't Latin-1
     let v8_string = js_exec(scope, "'œ'");
-    let rust_reflex: Result<serde_v8::ByteString, serde_v8::Error> =
+    let rust_reflex: Result<serde_v8::ByteString> =
       serde_v8::from_v8(scope, v8_string);
     assert!(rust_reflex.is_err());
 
