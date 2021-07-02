@@ -46,8 +46,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target/
-          key: cache2-${{ runner.os }}-${{ github.sha }}
-          restore-keys: cache2-${{ runner.os }}-
+          key: cache3-${{ runner.os }}-${{ github.sha }}
+          restore-keys: cache3-${{ runner.os }}-
 
       - name: Environment
         run: |
