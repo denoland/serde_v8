@@ -47,6 +47,7 @@ macro_rules! detest {
   ($fn_name:ident, $t:ty, $src:expr, $rust:expr) => {
     #[test]
     fn $fn_name() {
+      #[allow(clippy::bool_assert_comparison)]
       dedo($src, |scope, v| {
         let rt = serde_v8::from_v8(scope, v);
         assert!(rt.is_ok(), "from_v8(\"{}\"): {:?}", $src, rt.err());
