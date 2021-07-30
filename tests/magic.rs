@@ -9,9 +9,12 @@ use std::convert::TryFrom;
 
 #[derive(Deserialize)]
 struct MagicOp<'s> {
+  #[allow(unused)]
   pub a: u64,
+  #[allow(unused)]
   pub b: u64,
   pub c: serde_v8::Value<'s>,
+  #[allow(unused)]
   pub operator: Option<String>,
 }
 
