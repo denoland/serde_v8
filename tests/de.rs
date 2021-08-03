@@ -222,3 +222,5 @@ detest!(
     .collect()
   )
 );
+detest!(de_bigint_u64, u64, "BigInt(2**59)", 1 << 59);
+detest!(de_bigint_i64, i64, "BigInt(-(2**59))", -(1 << 59));

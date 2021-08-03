@@ -69,13 +69,40 @@ macro_rules! wip {
   };
 }
 
+// TODO: maybe check for BigInt truncation ?
+// (i.e: values larger than i64/u64 can hold)
 macro_rules! deserialize_signed {
   ($dmethod:ident, $vmethod:ident, $t:tt) => {
     fn $dmethod<V>(self, visitor: V) -> Result<V::Value>
     where
       V: Visitor<'de>,
     {
-      visitor.$vmethod(self.input.integer_value(&mut self.scope).unwrap() as $t)
+      let value: $t = match self.input.is_big_int() {
+        true => {
+          let bigint = v8::Local::<v8::BigInt>::try_from(self.input);
+          bigint.unwrap().i64_value().0 as $t
+        }
+        false => self.input.integer_value(&mut self.scope).unwrap() as $t,
+      };
+      visitor.$vmethod(value)
+    }
+  };
+}
+
+macro_rules! deserialize_unsigned {
+  ($dmethod:ident, $vmethod:ident, $t:tt) => {
+    fn $dmethod<V>(self, visitor: V) -> Result<V::Value>
+    where
+      V: Visitor<'de>,
+    {
+      let value: $t = match self.input.is_big_int() {
+        true => {
+          let bigint = v8::Local::<v8::BigInt>::try_from(self.input);
+          bigint.unwrap().u64_value().0 as $t
+        }
+        false => self.input.integer_value(&mut self.scope).unwrap() as $t,
+      };
+      visitor.$vmethod(value)
     }
   };
 }
@@ -116,15 +143,16 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     visitor.visit_bool(self.input.is_true())
   }
 
+  // signed
   deserialize_signed!(deserialize_i8, visit_i8, i8);
   deserialize_signed!(deserialize_i16, visit_i16, i16);
   deserialize_signed!(deserialize_i32, visit_i32, i32);
   deserialize_signed!(deserialize_i64, visit_i64, i64);
-  // TODO: maybe handle unsigned by itself ?
-  deserialize_signed!(deserialize_u8, visit_u8, u8);
-  deserialize_signed!(deserialize_u16, visit_u16, u16);
-  deserialize_signed!(deserialize_u32, visit_u32, u32);
-  deserialize_signed!(deserialize_u64, visit_u64, u64);
+  // unsigned
+  deserialize_unsigned!(deserialize_u8, visit_u8, u8);
+  deserialize_unsigned!(deserialize_u16, visit_u16, u16);
+  deserialize_unsigned!(deserialize_u32, visit_u32, u32);
+  deserialize_unsigned!(deserialize_u64, visit_u64, u64);
 
   fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value>
   where
