@@ -118,7 +118,7 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "bencher",
  "rusty_v8",
