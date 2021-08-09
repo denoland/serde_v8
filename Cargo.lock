@@ -68,9 +68,9 @@ dependencies = [
 
 [[package]]
 name = "rusty_v8"
-version = "0.25.1"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13867576f32f57576ebdf32ca98d63b8a58e9d0af084e1b366b41e66699c91a3"
+checksum = "ced8bcb4fdc4820792030377a71cedbde5b49b340c2174ee0ea368ef244bf8f1"
 dependencies = [
  "bitflags",
  "fslock",
