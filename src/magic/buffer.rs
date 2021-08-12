@@ -90,28 +90,40 @@ pub const BUF_NAME: &str = "$__v8_magic_Buffer";
 pub const BUF_FIELD_1: &str = "$__v8_magic_buffer_1";
 pub const BUF_FIELD_2: &str = "$__v8_magic_buffer_2";
 
-impl serde::Serialize for MagicBuffer {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: serde::Serializer,
-  {
-    use serde::ser::SerializeStruct;
+macro_rules! serialize {
+  ($t:tt) => {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+      S: serde::Serializer,
+    {
+      use serde::ser::SerializeStruct;
 
-    let mut s = serializer.serialize_struct(BUF_NAME, 1)?;
-    let boxed: Box<[u8]> = match self {
-      Self::FromV8(buf) => {
-        let value: &[u8] = buf;
-        value.into()
-      }
-      Self::ToV8(x) => x.lock().unwrap().take().expect("MagicBuffer was empty"),
-    };
-    let hack: [usize; 2] = unsafe { std::mem::transmute(boxed) };
-    let f1: u64 = hack[0] as u64;
-    let f2: u64 = hack[1] as u64;
-    s.serialize_field(BUF_FIELD_1, &f1)?;
-    s.serialize_field(BUF_FIELD_2, &f2)?;
-    s.end()
-  }
+      let mut s = serializer.serialize_struct(BUF_NAME, 2)?;
+      let boxed: Box<[u8]> = match self {
+        Self::FromV8(buf) => {
+          let value: &[u8] = buf;
+          value.into()
+        }
+        Self::ToV8(x) => {
+          x.lock().unwrap().take().expect("MagicBuffer was empty")
+        }
+      };
+      let hack: [usize; 2] = unsafe { std::mem::transmute(boxed) };
+      let f1: $t = hack[0] as $t;
+      let f2: $t = hack[1] as $t;
+      s.serialize_field(BUF_FIELD_1, &f1)?;
+      s.serialize_field(BUF_FIELD_2, &f2)?;
+      s.end()
+    }
+  };
+}
+
+impl serde::Serialize for MagicBuffer {
+  #[cfg(target_pointer_width = "64")]
+  serialize!(u64);
+
+  #[cfg(target_pointer_width = "32")]
+  serialize!(u32);
 }
 
 impl<'de, 's> serde::Deserialize<'de> for MagicBuffer {

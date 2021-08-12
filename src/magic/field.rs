@@ -2,15 +2,20 @@
 use crate::error::{Error, Result};
 use serde::ser::{Impossible, Serialize, Serializer};
 
-/// All serde_v8 "magic" values are reduced to structs with 1 or 2 u64 fields
-/// assuming usize==u64, most types are simply a pointer or pointer+len (e.g: Box<T>)
+/// All serde_v8 "magic" values are reduced to structs with 1 or 2 usize fields
+/// assuming usize==u64 or usize==u32, most types are simply a pointer or pointer+len (e.g: Box<T>)
+#[cfg(target_pointer_width = "64")]
 pub type TransmutedField = u64;
+
+#[cfg(target_pointer_width = "32")]
+pub type TransmutedField = u32;
+
 pub type FieldResult = Result<TransmutedField>;
 
 macro_rules! not_reachable {
     ($($name:ident($ty:ty);)*) => {
         $(fn $name(self, _v: $ty) -> FieldResult {
-            unreachable!();
+            panic!("unrecognized type {}", stringify!($ty));
         })*
     };
 }
@@ -31,10 +36,17 @@ impl Serializer for FieldSerializer {
   type SerializeStruct = Impossible<TransmutedField, Error>;
   type SerializeStructVariant = Impossible<TransmutedField, Error>;
 
+  #[cfg(target_pointer_width = "64")]
   fn serialize_u64(self, transmuted_field: u64) -> FieldResult {
     Ok(transmuted_field)
   }
 
+  #[cfg(target_pointer_width = "32")]
+  fn serialize_u32(self, transmuted_field: u32) -> FieldResult {
+    Ok(transmuted_field)
+  }
+
+  #[cfg(target_pointer_width = "64")]
   not_reachable! {
       serialize_i8(i8);
       serialize_i16(i16);
@@ -44,6 +56,24 @@ impl Serializer for FieldSerializer {
       serialize_u16(u16);
       serialize_u32(u32);
       // serialize_u64(TransmutedField); the chosen one
+      serialize_f32(f32);
+      serialize_f64(f64);
+      serialize_bool(bool);
+      serialize_char(char);
+      serialize_str(&str);
+      serialize_bytes(&[u8]);
+  }
+
+  #[cfg(target_pointer_width = "32")]
+  not_reachable! {
+      serialize_i8(i8);
+      serialize_i16(i16);
+      serialize_i32(i32);
+      serialize_i64(i64);
+      serialize_u8(u8);
+      serialize_u16(u16);
+      // serialize_u32(TransmutedField); the chosen one
+      serialize_u64(u64);
       serialize_f32(f32);
       serialize_f64(f64);
       serialize_bool(bool);

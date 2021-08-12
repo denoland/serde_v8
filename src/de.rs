@@ -107,6 +107,75 @@ macro_rules! deserialize_unsigned {
   };
 }
 
+macro_rules! deserialize_struct {
+  ($t:tt, $vmethod:ident, $dsize:expr) => {
+    fn deserialize_struct<V>(
+      self,
+      name: &'static str,
+      fields: &'static [&'static str],
+      visitor: V,
+    ) -> Result<V::Value>
+    where
+      V: Visitor<'de>,
+    {
+      if name == magic::NAME {
+        let mv = magic::Value {
+          v8_value: self.input,
+        };
+        let hack: $t = unsafe { std::mem::transmute(mv) };
+        return visitor.$vmethod(hack);
+      }
+
+      // Magic Buffer
+      if name == magic::buffer::BUF_NAME {
+        let zero_copy_buf =
+          v8::Local::<v8::ArrayBufferView>::try_from(self.input)
+            .and_then(|view| {
+              magic::zero_copy_buf::ZeroCopyBuf::try_new(self.scope, view)
+            })
+            .map_err(|_| Error::ExpectedArray)?;
+        let data: [u8; $dsize] = unsafe { std::mem::transmute(zero_copy_buf) };
+        return visitor.visit_bytes(&data);
+      }
+
+      // Magic ByteString
+      if name == magic::bytestring::NAME {
+        if let Some(v8_string) = self.input.to_string(self.scope) {
+          if v8_string.contains_only_onebyte() {
+            let mut buffer: Vec<u8> = vec![0u8; v8_string.length()];
+            let written = v8_string.write_one_byte(
+              self.scope,
+              &mut buffer,
+              0,
+              v8::WriteOptions::NO_NULL_TERMINATION,
+            );
+            assert!(written == v8_string.length());
+            return visitor.visit_byte_buf(buffer);
+          } else {
+            return Err(Error::Message(
+              "Expected a valid ByteString.".to_string(),
+            ));
+          }
+        } else {
+          return Err(Error::ExpectedString);
+        }
+      }
+
+      // Regular struct
+      let obj = v8::Local::<v8::Object>::try_from(self.input).unwrap();
+      let map = ObjectAccess {
+        fields,
+        obj,
+        pos: 0,
+        scope: self.scope,
+        _cache: None,
+      };
+
+      visitor.visit_map(map)
+    }
+  };
+}
+
 impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
   for &'x mut Deserializer<'a, 'b, 's>
 {
@@ -314,72 +383,11 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     visitor.visit_map(map)
   }
 
-  fn deserialize_struct<V>(
-    self,
-    name: &'static str,
-    fields: &'static [&'static str],
-    visitor: V,
-  ) -> Result<V::Value>
-  where
-    V: Visitor<'de>,
-  {
-    // Magic for serde_v8::magic::Value, to passthrough v8::Value
-    // TODO: ensure this is cross-platform and there's no alternative
-    if name == magic::NAME {
-      let mv = magic::Value {
-        v8_value: self.input,
-      };
-      let hack: u64 = unsafe { std::mem::transmute(mv) };
-      return visitor.visit_u64(hack);
-    }
+  #[cfg(target_pointer_width = "64")]
+  deserialize_struct!(u64, visit_u64, 32);
 
-    // Magic Buffer
-    if name == magic::buffer::BUF_NAME {
-      let zero_copy_buf =
-        v8::Local::<v8::ArrayBufferView>::try_from(self.input)
-          .and_then(|view| {
-            magic::zero_copy_buf::ZeroCopyBuf::try_new(self.scope, view)
-          })
-          .map_err(|_| Error::ExpectedArray)?;
-      let data: [u8; 32] = unsafe { std::mem::transmute(zero_copy_buf) };
-      return visitor.visit_bytes(&data);
-    }
-
-    // Magic ByteString
-    if name == magic::bytestring::NAME {
-      if let Some(v8_string) = self.input.to_string(self.scope) {
-        if v8_string.contains_only_onebyte() {
-          let mut buffer: Vec<u8> = vec![0u8; v8_string.length()];
-          let written = v8_string.write_one_byte(
-            self.scope,
-            &mut buffer,
-            0,
-            v8::WriteOptions::NO_NULL_TERMINATION,
-          );
-          assert!(written == v8_string.length());
-          return visitor.visit_byte_buf(buffer);
-        } else {
-          return Err(Error::Message(
-            "Expected a valid ByteString.".to_string(),
-          ));
-        }
-      } else {
-        return Err(Error::ExpectedString);
-      }
-    }
-
-    // Regular struct
-    let obj = v8::Local::<v8::Object>::try_from(self.input).unwrap();
-    let map = ObjectAccess {
-      fields,
-      obj,
-      pos: 0,
-      scope: self.scope,
-      _cache: None,
-    };
-
-    visitor.visit_map(map)
-  }
+  #[cfg(target_pointer_width = "32")]
+  deserialize_struct!(u32, visit_u32, 16);
 
   /// To be compatible with `serde-json`, we expect enums to be:
   /// - `"Variant"`: strings for unit variants, i.e: Enum::Variant

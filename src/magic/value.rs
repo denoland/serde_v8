@@ -30,21 +30,31 @@ impl<'s> From<Value<'s>> for v8::Local<'s, v8::Value> {
   }
 }
 
-impl serde::Serialize for Value<'_> {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: serde::Serializer,
-  {
-    use serde::ser::SerializeStruct;
+macro_rules! serialize {
+  ($t:tt) => {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+      S: serde::Serializer,
+    {
+      use serde::ser::SerializeStruct;
 
-    let mut s = serializer.serialize_struct(NAME, 1)?;
-    let mv = Value {
-      v8_value: self.v8_value,
-    };
-    let hack: u64 = unsafe { std::mem::transmute(mv) };
-    s.serialize_field(FIELD, &hack)?;
-    s.end()
-  }
+      let mut s = serializer.serialize_struct(NAME, 1)?;
+      let mv = Value {
+        v8_value: self.v8_value,
+      };
+      let hack: $t = unsafe { std::mem::transmute(mv) };
+      s.serialize_field(FIELD, &hack)?;
+      s.end()
+    }
+  };
+}
+
+impl serde::Serialize for Value<'_> {
+  #[cfg(target_pointer_width = "64")]
+  serialize!(u64);
+
+  #[cfg(target_pointer_width = "32")]
+  serialize!(u32);
 }
 
 impl<'de, 's> serde::Deserialize<'de> for Value<'s> {
@@ -63,7 +73,17 @@ impl<'de, 's> serde::Deserialize<'de> for Value<'s> {
         formatter.write_str("a v8::Value")
       }
 
+      #[cfg(target_pointer_width = "64")]
       fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+      where
+        E: serde::de::Error,
+      {
+        let mv: Value<'s> = unsafe { std::mem::transmute(v) };
+        Ok(mv)
+      }
+
+      #[cfg(target_pointer_width = "32")]
+      fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E>
       where
         E: serde::de::Error,
       {

@@ -81,18 +81,28 @@ impl AsMut<[u8]> for ByteString {
   }
 }
 
-impl Serialize for ByteString {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    use serde::ser::SerializeStruct;
+macro_rules! serialize {
+  ($t:tt) => {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+      S: Serializer,
+    {
+      use serde::ser::SerializeStruct;
 
-    let mut s = serializer.serialize_struct(NAME, 1)?;
-    s.serialize_field(FIELD_PTR, &(self.0.as_ptr() as usize))?;
-    s.serialize_field(FIELD_LEN, &self.0.len())?;
-    s.end()
-  }
+      let mut s = serializer.serialize_struct(NAME, 2)?;
+      s.serialize_field(FIELD_PTR, &(self.0.as_ptr() as $t))?;
+      s.serialize_field(FIELD_LEN, &(self.0.len() as $t))?;
+      s.end()
+    }
+  };
+}
+
+impl Serialize for ByteString {
+  #[cfg(target_pointer_width = "64")]
+  serialize!(u64);
+
+  #[cfg(target_pointer_width = "32")]
+  serialize!(u32);
 }
 
 impl<'de> Deserialize<'de> for ByteString {

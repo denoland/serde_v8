@@ -8,6 +8,7 @@ use std::cell::RefCell;
 use crate::error::{Error, Result};
 use crate::keys::v8_struct_key;
 use crate::magic;
+use crate::magic::field::TransmutedField;
 
 type JsValue<'s> = v8::Local<'s, v8::Value>;
 type JsResult<'s> = Result<JsValue<'s>>;
@@ -213,7 +214,7 @@ impl<'a> ser::SerializeStruct for MagicSerializer<'a> {
     if key != magic::FIELD {
       unreachable!();
     }
-    let transmuted: u64 = value.serialize(magic::FieldSerializer {})?;
+    let transmuted = value.serialize(magic::FieldSerializer {})?;
     let mv: magic::Value<'a> = unsafe { std::mem::transmute(transmuted) };
     self.v8_value = Some(mv.v8_value);
     Ok(())
@@ -227,8 +228,8 @@ impl<'a> ser::SerializeStruct for MagicSerializer<'a> {
 // TODO(@AaronO): refactor this and streamline how we transmute values
 pub struct MagicBufferSerializer<'a, 'b, 'c> {
   scope: ScopePtr<'a, 'b, 'c>,
-  f1: u64,
-  f2: u64,
+  f1: TransmutedField,
+  f2: TransmutedField,
 }
 
 impl<'a, 'b, 'c> MagicBufferSerializer<'a, 'b, 'c> {
@@ -250,8 +251,8 @@ impl<'a, 'b, 'c> ser::SerializeStruct for MagicBufferSerializer<'a, 'b, 'c> {
     key: &'static str,
     value: &T,
   ) -> Result<()> {
-    // Get u64 chunk
-    let transmuted: u64 = value.serialize(magic::FieldSerializer {})?;
+    // Get chunk
+    let transmuted = value.serialize(magic::FieldSerializer {})?;
     match key {
       magic::buffer::BUF_FIELD_1 => self.f1 = transmuted,
       magic::buffer::BUF_FIELD_2 => self.f2 = transmuted,
@@ -296,8 +297,8 @@ impl<'a, 'b, 'c> ser::SerializeStruct
     key: &'static str,
     value: &T,
   ) -> Result<()> {
-    // Get u64 chunk
-    let transmuted: u64 = value.serialize(magic::FieldSerializer {})?;
+    // Get chunk
+    let transmuted = value.serialize(magic::FieldSerializer {})?;
     match key {
       magic::bytestring::FIELD_PTR => {
         self.ptr = std::ptr::NonNull::new(transmuted as *mut u8);
