@@ -28,13 +28,13 @@ function arrEqual(a, b) {
 const JS_POLLUTE: &str = r#"
 Object.defineProperty(Array.prototype, "0", {
   set: function (v) {
-    throw new Error("Should define own properties");
+    throw new Error("Polluted Array 0 set");
   },
 });
 
 Object.defineProperty(Object.prototype, "a", {
   set: (v) => {
-    throw new Error("WTF");
+    throw new Error("Polluted Object 'a' set");
   }
 });
 "#;
