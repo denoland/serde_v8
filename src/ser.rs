@@ -4,6 +4,7 @@ use serde::ser;
 use serde::ser::Serialize;
 
 use std::cell::RefCell;
+use std::convert::TryInto;
 
 use crate::error::{Error, Result};
 use crate::keys::v8_struct_key;
@@ -48,9 +49,10 @@ impl<'a, 'b, 'c, S> VariantSerializer<'a, 'b, 'c, S> {
   fn end(self, inner: impl FnOnce(S) -> JsResult<'a>) -> JsResult<'a> {
     let value = inner(self.inner)?;
     let scope = &mut *self.scope.borrow_mut();
-    let obj = v8::Object::new(scope);
+    let null = v8::null(scope).into();
     let key = v8_struct_key(scope, self.variant).into();
-    obj.set(scope, key, value);
+    let obj =
+      v8::Object::with_prototype_and_properties(scope, null, &[key], &[value]);
     Ok(obj.into())
   }
 }
@@ -166,13 +168,19 @@ impl<'a, 'b, 'c> ser::SerializeTupleStruct for ArraySerializer<'a, 'b, 'c> {
 
 pub struct ObjectSerializer<'a, 'b, 'c> {
   scope: ScopePtr<'a, 'b, 'c>,
-  obj: v8::Local<'a, v8::Object>,
+  keys: Vec<v8::Local<'a, v8::Name>>,
+  values: Vec<JsValue<'a>>,
 }
 
 impl<'a, 'b, 'c> ObjectSerializer<'a, 'b, 'c> {
-  pub fn new(scope: ScopePtr<'a, 'b, 'c>) -> Self {
-    let obj = v8::Object::new(&mut *scope.borrow_mut());
-    Self { scope, obj }
+  pub fn new(scope: ScopePtr<'a, 'b, 'c>, len: usize) -> Self {
+    let keys = Vec::with_capacity(len);
+    let values = Vec::with_capacity(len);
+    Self {
+      scope,
+      keys,
+      values,
+    }
   }
 }
 
@@ -188,12 +196,21 @@ impl<'a, 'b, 'c> ser::SerializeStruct for ObjectSerializer<'a, 'b, 'c> {
     let value = value.serialize(Serializer::new(self.scope))?;
     let scope = &mut *self.scope.borrow_mut();
     let key = v8_struct_key(scope, key).into();
-    self.obj.set(scope, key, value);
+    self.keys.push(key);
+    self.values.push(value);
     Ok(())
   }
 
   fn end(self) -> JsResult<'a> {
-    Ok(self.obj.into())
+    let scope = &mut *self.scope.borrow_mut();
+    let null = v8::null(scope);
+    let obj = v8::Object::with_prototype_and_properties(
+      scope,
+      null.into(),
+      &self.keys[..],
+      &self.values[..],
+    );
+    Ok(obj.into())
   }
 }
 
@@ -362,17 +379,18 @@ impl<'a, 'b, 'c> ser::SerializeStruct for StructSerializers<'a, 'b, 'c> {
 // Serializes to JS Objects, NOT JS Maps ...
 pub struct MapSerializer<'a, 'b, 'c> {
   scope: ScopePtr<'a, 'b, 'c>,
-  obj: v8::Local<'a, v8::Object>,
-  next_key: Option<JsValue<'a>>,
+  keys: Vec<v8::Local<'a, v8::Name>>,
+  values: Vec<JsValue<'a>>,
 }
 
 impl<'a, 'b, 'c> MapSerializer<'a, 'b, 'c> {
-  pub fn new(scope: ScopePtr<'a, 'b, 'c>) -> Self {
-    let obj = v8::Object::new(&mut *scope.borrow_mut());
+  pub fn new(scope: ScopePtr<'a, 'b, 'c>, len: Option<usize>) -> Self {
+    let keys = Vec::with_capacity(len.unwrap_or_default());
+    let values = Vec::with_capacity(len.unwrap_or_default());
     Self {
       scope,
-      obj,
-      next_key: None,
+      keys,
+      values,
     }
   }
 }
@@ -382,8 +400,8 @@ impl<'a, 'b, 'c> ser::SerializeMap for MapSerializer<'a, 'b, 'c> {
   type Error = Error;
 
   fn serialize_key<T: ?Sized + Serialize>(&mut self, key: &T) -> Result<()> {
-    debug_assert!(self.next_key.is_none());
-    self.next_key = Some(key.serialize(Serializer::new(self.scope))?);
+    let key = key.serialize(Serializer::new(self.scope))?;
+    self.keys.push(key.try_into().unwrap());
     Ok(())
   }
 
@@ -392,14 +410,21 @@ impl<'a, 'b, 'c> ser::SerializeMap for MapSerializer<'a, 'b, 'c> {
     value: &T,
   ) -> Result<()> {
     let v8_value = value.serialize(Serializer::new(self.scope))?;
-    let scope = &mut *self.scope.borrow_mut();
-    self.obj.set(scope, self.next_key.take().unwrap(), v8_value);
+    self.values.push(v8_value);
     Ok(())
   }
 
   fn end(self) -> JsResult<'a> {
-    debug_assert!(self.next_key.is_none());
-    Ok(self.obj.into())
+    debug_assert!(self.keys.len() == self.values.len());
+    let scope = &mut *self.scope.borrow_mut();
+    let null = v8::null(scope).into();
+    let obj = v8::Object::with_prototype_and_properties(
+      scope,
+      null,
+      &self.keys[..],
+      &self.values[..],
+    );
+    Ok(obj.into())
   }
 }
 
@@ -555,19 +580,19 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
     ))
   }
 
-  fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap> {
+  fn serialize_map(self, len: Option<usize>) -> Result<Self::SerializeMap> {
     // Serializes a rust Map (e.g: BTreeMap, HashMap) to a v8 Object
     // TODO: consider allowing serializing to v8 Maps (e.g: via a magic type)
     // since they're lighter and better suited for K/V data
     // and maybe restrict keys (e.g: strings and numbers)
-    Ok(MapSerializer::new(self.scope))
+    Ok(MapSerializer::new(self.scope, len))
   }
 
   /// Serialises Rust typed structs into plain JS objects.
   fn serialize_struct(
     self,
     name: &'static str,
-    _len: usize,
+    len: usize,
   ) -> Result<Self::SerializeStruct> {
     match name {
       magic::NAME => {
@@ -583,7 +608,7 @@ impl<'a, 'b, 'c> ser::Serializer for Serializer<'a, 'b, 'c> {
         Ok(StructSerializers::MagicByteString(m))
       }
       _ => {
-        let o = ObjectSerializer::new(self.scope);
+        let o = ObjectSerializer::new(self.scope, len);
         Ok(StructSerializers::Regular(o))
       }
     }
