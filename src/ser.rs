@@ -401,11 +401,9 @@ impl<'a, 'b, 'c> ser::SerializeMap for MapSerializer<'a, 'b, 'c> {
 
   fn serialize_key<T: ?Sized + Serialize>(&mut self, key: &T) -> Result<()> {
     let key = key.serialize(Serializer::new(self.scope))?;
-    self.keys.push(
-      key
-        .try_into()
-        .map_err(|_| Error::Message("Serialized Maps expect String keys".into()))?,
-    );
+    self.keys.push(key.try_into().map_err(|_| {
+      Error::Message("Serialized Maps expect String keys".into())
+    })?);
     Ok(())
   }
 
