@@ -7,7 +7,7 @@ edition = "2018"
 description = "Rust to V8 serialization and deserialization"
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/denoland/deno"
+repository = "https://github.com/denoland/serde_v8"
 
 [dependencies]
 serde = { version = "1.0.125", features = ["derive"] }
