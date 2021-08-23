@@ -291,7 +291,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     V: de::Visitor<'de>,
   {
     // Assume object, then get_own_property_names
-    let obj = v8::Local::<v8::Object>::try_from(self.input).map_err(|_| Error::ExpectedObject)?;
+    let obj = v8::Local::<v8::Object>::try_from(self.input)
+      .map_err(|_| Error::ExpectedObject)?;
     let prop_names = obj.get_own_property_names(self.scope);
     let mut keys: Vec<magic::Value> = match prop_names {
       Some(names) => from_v8(self.scope, names.into()).unwrap(),
