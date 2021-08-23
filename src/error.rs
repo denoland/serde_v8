@@ -16,6 +16,7 @@ pub enum Error {
   ExpectedArray,
   ExpectedMap,
   ExpectedEnum,
+  ExpectedObject,
 
   ExpectedUtf8,
 
