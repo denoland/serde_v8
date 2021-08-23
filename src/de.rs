@@ -369,7 +369,8 @@ impl<'de, 'a, 'b, 's, 'x> de::Deserializer<'de>
     }
 
     // Regular struct
-    let obj = v8::Local::<v8::Object>::try_from(self.input).unwrap();
+    let obj = v8::Local::<v8::Object>::try_from(self.input)
+      .map_err(|_| Error::ExpectedObject)?;
     let map = ObjectAccess {
       fields,
       obj,

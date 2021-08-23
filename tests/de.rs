@@ -4,6 +4,7 @@ use rusty_v8 as v8;
 use serde::Deserialize;
 
 use serde_v8::utils::{js_exec, v8_do};
+use serde_v8::Error;
 
 #[derive(Debug, Deserialize, PartialEq)]
 struct MathOp {
@@ -53,6 +54,25 @@ macro_rules! detest {
         assert!(rt.is_ok(), "from_v8(\"{}\"): {:?}", $src, rt.err());
         let t: $t = rt.unwrap();
         assert_eq!(t, $rust);
+      });
+    }
+  };
+}
+
+macro_rules! defail {
+  ($fn_name:ident, $t:ty, $src:expr, $failcase:expr) => {
+    #[test]
+    fn $fn_name() {
+      #[allow(clippy::bool_assert_comparison)]
+      dedo($src, |scope, v| {
+        let rt: serde_v8::Result<$t> = serde_v8::from_v8(scope, v);
+        let rtstr = format!("{:?}", rt);
+        let failed_as_expected = $failcase(rt);
+        assert!(
+          failed_as_expected,
+          "expected failure on deserialize(\"{}\"), got: {}",
+          $src, rtstr
+        );
       });
     }
   };
@@ -224,3 +244,6 @@ detest!(
 );
 detest!(de_bigint_u64, u64, "BigInt(2**59)", 1 << 59);
 detest!(de_bigint_i64, i64, "BigInt(-(2**59))", -(1 << 59));
+
+defail!(defail_struct, MathOp, "123", |e| e
+  == Err(Error::ExpectedObject));
